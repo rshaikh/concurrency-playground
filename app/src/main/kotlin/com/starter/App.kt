@@ -3,6 +3,10 @@
  */
 package com.starter
 
+import kotlinx.coroutines.*
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+
 class App {
     val greeting: String
         get() {
@@ -10,6 +14,40 @@ class App {
         }
 }
 
-fun main() {
-    println(App().greeting)
+//fun main() {
+//    println(App().greeting)
+//}
+
+suspend fun task1() {
+    println("start task1 in Thread ${Thread.currentThread()}")
+    yield()
+    println("end task1 in Thread ${Thread.currentThread()}")
 }
+
+suspend fun task2() {
+    println("start task2 in Thread ${Thread.currentThread()}")
+    yield()
+    println("end task2 in Thread ${Thread.currentThread()}")
+}
+fun main()  {
+    Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()).asCoroutineDispatcher().use { context ->
+        println("start")
+        runBlocking {
+            launch(context = context, start = CoroutineStart.UNDISPATCHED) { task1() }
+            launch { task2() }
+            println("called task1 and task2 from ${Thread.currentThread()}")
+        }
+        println("done")
+    }
+    println("inside main thread")
+}
+
+/*
+fun main() {
+    runBlocking(CoroutineName("top")) {
+        println("starting in Thread ${Thread.currentThread()}")
+        withContext (Dispatchers.Default) { task1() }
+        launch(Dispatchers.Default + CoroutineName("task runner")) { task2() }
+        println("ending in Thread ${Thread.currentThread()}")
+    }
+}*/
