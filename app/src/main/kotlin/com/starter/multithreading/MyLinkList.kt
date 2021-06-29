@@ -5,9 +5,10 @@ class MyLinkList {
     private var tail: Node? = null
     var size: Int = 0
     fun add(item: Int) {
-        if(head == null && tail == null) {
-            head = Node(item)
-            tail= head
+        if (isEmpty()) {
+            val node = Node(item)
+            head = node
+            tail = node
         } else {
             val node = Node(item)
             tail?.next = node
@@ -22,10 +23,11 @@ class MyLinkList {
 
     fun remove(): Int? {
         var value: Int? = null
-        if(size > 0) {
+        if (!isEmpty()) {
             value = head?.value
             head = head?.next
-            if(head == null) {
+            val isLastElementRemoved = head == null
+            if (isLastElementRemoved) {
                 tail = null
             }
             size--

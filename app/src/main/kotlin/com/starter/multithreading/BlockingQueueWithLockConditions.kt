@@ -1,12 +1,11 @@
 package com.starter.multithreading
 
-import java.util.*
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 
 class BlockingQueueWithLockConditions(val capacity: Int) {
     var lock = ReentrantLock()
-    val q = LinkedList<Int>()
+    val q = MyLinkList()
     val notFull = lock.newCondition()
     val notEmpty = lock.newCondition()
 
