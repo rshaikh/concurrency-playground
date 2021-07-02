@@ -2,15 +2,16 @@ package com.starter.multithreading
 
 import org.amshove.kluent.`should equal`
 import org.junit.jupiter.api.Test
+import java.time.Duration
 
 class CircuitBreakerTest{
     private fun anOpenCircuitBreaker() =
         CircuitBreaker(failedThreshold = 3, status = CircuitBreakerStatus.OPEN)
 
-    private fun anOpenCircuitBreakerReadyToRetry() =
+    private fun anOpenCircuitBreakerReadyToRetryAfterOneSecond() =
         CircuitBreaker(failedThreshold = 3,
             status = CircuitBreakerStatus.OPEN,
-            shouldRetry = true)
+        shouldRetryAfter = Duration.ofSeconds(1))
 
     private fun aClosedCircuitBreaker() = CircuitBreaker()
 
@@ -77,7 +78,8 @@ class CircuitBreakerTest{
 
     @Test
     fun `it should mark circuit breaker as partially close on success response when current state is open and ready to retry`() {
-        val circuitBreaker = anOpenCircuitBreakerReadyToRetry()
+        val circuitBreaker = anOpenCircuitBreakerReadyToRetryAfterOneSecond()
+        Thread.sleep(1000)
 
         circuitBreaker.call {
             "This is a successful call"
@@ -88,7 +90,8 @@ class CircuitBreakerTest{
 
     @Test
     fun `it should keep circuit breaker as open on failure response when current state is open and ready to retry`() {
-        val circuitBreaker = anOpenCircuitBreakerReadyToRetry()
+        val circuitBreaker = anOpenCircuitBreakerReadyToRetryAfterOneSecond()
+        Thread.sleep(1000)
 
         circuitBreaker.call {
             throw RuntimeException("something went wrong")
@@ -129,5 +132,17 @@ class CircuitBreakerTest{
         }
 
         circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+    }
+
+    @Test
+    fun `it should automatically retry connection after specified duration`() {
+        val circuitBreaker = CircuitBreaker(failedThreshold = 3, status = CircuitBreakerStatus.OPEN, shouldRetryAfter = Duration.ofSeconds(2))
+        val success = "some success response"
+        Thread.sleep(2010)
+        val breakerResponse = circuitBreaker.call {
+            success
+        }
+        circuitBreaker.status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
+        breakerResponse.response!! `should equal` success
     }
 }

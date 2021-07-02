@@ -1,20 +1,24 @@
 package com.starter.multithreading
 
+import java.time.Duration
+
 class CircuitBreaker(
     val failedThreshold: Int = 3,
+    val successThreshold: Int = 3,
     var status: CircuitBreakerStatus = CircuitBreakerStatus.CLOSE,
-    var shouldRetry: Boolean = false
+    val shouldRetryAfter: Duration = Duration.ofSeconds(1)
 ) {
     private var successCountAfterPartialFailure = 0
     private var failureCountAfterPartialFailure = 0
     private var failedCount: Int = 0
+    private var lastAttempt = System.currentTimeMillis()
 
     fun call(block: () -> Any): CircuitBreakerResponse {
         when (status) {
             CircuitBreakerStatus.OPEN -> {
-                return if (shouldRetry) {
+                return if (shouldRetry()) {
                     try {
-                        val response = block()
+                        val response = executeBlock(block)
                         registerPartialSuccess()
                         CircuitBreakerResponse.success(response)
                     } catch (ex: Exception) {
@@ -49,14 +53,21 @@ class CircuitBreaker(
         }
     }
 
+    private fun shouldRetry() = (System.currentTimeMillis() - lastAttempt) / 1000 >= shouldRetryAfter.seconds
+
+    private fun executeBlock(block: () -> Any): Any {
+        lastAttempt = System.currentTimeMillis()
+        return block()
+    }
+
     private fun registerFailureWhenCircuitWasOpen() {
         failedCount++
         status = if (failedCount == failedThreshold) CircuitBreakerStatus.OPEN else CircuitBreakerStatus.CLOSE
     }
 
-    private fun shouldCloseAfterPartialClose() = successCountAfterPartialFailure == 3
+    private fun shouldCloseAfterPartialClose() = successCountAfterPartialFailure == successThreshold
 
-    private fun shouldOpenAfterPartialClose() = failureCountAfterPartialFailure == 3
+    private fun shouldOpenAfterPartialClose() = failureCountAfterPartialFailure == failedThreshold
 
     private fun registerPartialFailure() {
         failureCountAfterPartialFailure++
