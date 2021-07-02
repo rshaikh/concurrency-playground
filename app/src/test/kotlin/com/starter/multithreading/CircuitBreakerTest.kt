@@ -5,11 +5,10 @@ import org.junit.jupiter.api.Test
 
 class CircuitBreakerTest{
     private fun anOpenCircuitBreaker() =
-        CircuitBreaker(failedThreshold = 3, failedCount = 3, status = CircuitBreakerStatus.OPEN)
+        CircuitBreaker(failedThreshold = 3, status = CircuitBreakerStatus.OPEN)
 
     private fun anOpenCircuitBreakerReadyToRetry() =
         CircuitBreaker(failedThreshold = 3,
-            failedCount = 3,
             status = CircuitBreakerStatus.OPEN,
             shouldRetry = true)
 
@@ -18,14 +17,12 @@ class CircuitBreakerTest{
     private fun anPartialCloseCircuit() =
         CircuitBreaker(status = CircuitBreakerStatus.PARTIAL_CLOSE)
 
-
     @Test
     fun `it should return success response from upstream`() {
         val circuitBreaker = aClosedCircuitBreaker()
         val blockResponse = "This is a successful call"
 
         val breakerResponse = circuitBreaker.call {
-            println("block has been called, returning success")
             blockResponse
         }
 
@@ -39,7 +36,6 @@ class CircuitBreakerTest{
         val exceptionFromBlock = RuntimeException("something went wrong")
 
         val breakerResponse = circuitBreaker.call {
-            println("block has been called, returning success")
             throw exceptionFromBlock
         }
 
@@ -53,17 +49,14 @@ class CircuitBreakerTest{
         val exceptionFromBlock = RuntimeException("something went wrong")
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             throw exceptionFromBlock
         }
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             throw exceptionFromBlock
         }
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             throw exceptionFromBlock
         }
 
@@ -76,7 +69,6 @@ class CircuitBreakerTest{
         val exceptionFromBlock = RuntimeException("something went wrong")
 
         val breakerResponse = circuitBreaker.call {
-            println("block has been called, returning success")
             throw exceptionFromBlock
         }
 
@@ -88,7 +80,6 @@ class CircuitBreakerTest{
         val circuitBreaker = anOpenCircuitBreakerReadyToRetry()
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             "This is a successful call"
         }
 
@@ -100,7 +91,6 @@ class CircuitBreakerTest{
         val circuitBreaker = anOpenCircuitBreakerReadyToRetry()
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             throw RuntimeException("something went wrong")
         }
 
@@ -108,22 +98,36 @@ class CircuitBreakerTest{
     }
 
     @Test
-    fun `it should mark circuit breaker as close on 3 success responses when current state partial open`() {
+    fun `it should mark circuit breaker as close on 3 success responses when current state partial close`() {
         val circuitBreaker = anPartialCloseCircuit()
 
         circuitBreaker.call {
-            println("block has been called, returning success")
             "successful response"
         }
         circuitBreaker.call {
-            println("block has been called, returning success")
             "successful response"
         }
         circuitBreaker.call {
-            println("block has been called, returning success")
             "successful response"
         }
 
         circuitBreaker.status `should equal` CircuitBreakerStatus.CLOSE
+    }
+
+    @Test
+    fun `it should mark circuit breaker as open on 3 failed responses when current state partial close`() {
+        val circuitBreaker = anPartialCloseCircuit()
+
+        circuitBreaker.call {
+            throw RuntimeException("something went wrong")
+        }
+        circuitBreaker.call {
+            throw RuntimeException("something went wrong")
+        }
+        circuitBreaker.call {
+            throw RuntimeException("something went wrong")
+        }
+
+        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
     }
 }

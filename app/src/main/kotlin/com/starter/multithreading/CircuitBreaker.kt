@@ -1,51 +1,86 @@
 package com.starter.multithreading
 
 class CircuitBreaker(
-    val failedThreshold: Int = 3, var failedCount: Int = 0,
+    val failedThreshold: Int = 3,
     var status: CircuitBreakerStatus = CircuitBreakerStatus.CLOSE,
-    var shouldRetry: Boolean = false,
-    var successCountAfterPartialFailure: Int = 0,
+    var shouldRetry: Boolean = false
 ) {
+    private var successCountAfterPartialFailure = 0
+    private var failureCountAfterPartialFailure = 0
+    private var failedCount: Int = 0
 
     fun call(block: () -> Any): CircuitBreakerResponse {
-        if (status == CircuitBreakerStatus.OPEN && !shouldRetry) {
-            return CircuitBreakerResponse.defaultResponse()
-        }
-
-        if (status == CircuitBreakerStatus.OPEN && shouldRetry) {
-            return try {
-                val response = block()
-                status = CircuitBreakerStatus.PARTIAL_CLOSE
-                successCountAfterPartialFailure++
-                CircuitBreakerResponse.success(response)
-            } catch (ex: Exception) {
-                failedCount++
-                CircuitBreakerResponse.failure(ex)
+        when (status) {
+            CircuitBreakerStatus.OPEN -> {
+                return if (shouldRetry) {
+                    try {
+                        val response = block()
+                        registerPartialSuccess()
+                        CircuitBreakerResponse.success(response)
+                    } catch (ex: Exception) {
+                        registerPartialFailure()
+                        CircuitBreakerResponse.failure(ex)
+                    }
+                } else {
+                    CircuitBreakerResponse.defaultResponse()
+                }
             }
-        }
-
-        if (status == CircuitBreakerStatus.PARTIAL_CLOSE) {
-            return try {
+            CircuitBreakerStatus.PARTIAL_CLOSE -> return try {
                 val response = block()
-                successCountAfterPartialFailure++
-                if(successCountAfterPartialFailure == 3) {
-                    status = CircuitBreakerStatus.CLOSE
+                registerPartialSuccess()
+                if (shouldCloseAfterPartialClose()) {
+                    closeCircuit()
                 }
                 CircuitBreakerResponse.success(response)
             } catch (ex: Exception) {
-                failedCount++
+                registerPartialFailure()
+                if (shouldOpenAfterPartialClose()) {
+                    openCircuit()
+                }
+                CircuitBreakerResponse.failure(ex)
+            }
+            else -> return try {
+                val response = block()
+                CircuitBreakerResponse.success(response)
+            } catch (ex: Exception) {
+                registerFailureWhenCircuitWasOpen()
                 CircuitBreakerResponse.failure(ex)
             }
         }
+    }
 
-        return try {
-            val response = block()
-            CircuitBreakerResponse.success(response)
-        } catch (ex: Exception) {
-            failedCount++
-            status = if (failedCount == failedThreshold) CircuitBreakerStatus.OPEN else CircuitBreakerStatus.CLOSE
-            CircuitBreakerResponse.failure(ex)
-        }
+    private fun registerFailureWhenCircuitWasOpen() {
+        failedCount++
+        status = if (failedCount == failedThreshold) CircuitBreakerStatus.OPEN else CircuitBreakerStatus.CLOSE
+    }
+
+    private fun shouldCloseAfterPartialClose() = successCountAfterPartialFailure == 3
+
+    private fun shouldOpenAfterPartialClose() = failureCountAfterPartialFailure == 3
+
+    private fun registerPartialFailure() {
+        failureCountAfterPartialFailure++
+    }
+
+    private fun registerPartialSuccess() {
+        status = CircuitBreakerStatus.PARTIAL_CLOSE
+        successCountAfterPartialFailure++
+    }
+
+    private fun openCircuit() {
+        status = CircuitBreakerStatus.OPEN
+        resetCounters()
+    }
+
+    private fun closeCircuit() {
+        status = CircuitBreakerStatus.CLOSE
+        resetCounters()
+    }
+
+    private fun resetCounters() {
+        failedCount = 0
+        successCountAfterPartialFailure = 0
+        failureCountAfterPartialFailure = 0
     }
 }
 
