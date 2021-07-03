@@ -6,17 +6,17 @@ import java.time.Duration
 
 class CircuitBreakerTest {
     private fun anOpenCircuitBreaker() =
-        CircuitBreaker(failedThreshold = 3, status = CircuitBreakerStatus.OPEN)
+        CircuitBreaker(failedThreshold = 3, initialStatus = CircuitBreakerStatus.OPEN)
 
     private fun anOpenCircuitBreakerReadyToRetryAfterOneSecond() =
         CircuitBreaker(
             failedThreshold = 3,
-            status = CircuitBreakerStatus.OPEN,
+            initialStatus = CircuitBreakerStatus.OPEN,
             shouldRetryAfter = Duration.ofSeconds(1)
         )
 
     private fun anPartialCloseCircuit() =
-        CircuitBreaker(status = CircuitBreakerStatus.PARTIAL_CLOSE)
+        CircuitBreaker(initialStatus = CircuitBreakerStatus.PARTIAL_CLOSE)
 
     @Test
     fun `it should return success response from upstream`() {
@@ -61,7 +61,7 @@ class CircuitBreakerTest {
             throw exceptionFromBlock
         }
 
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
     }
 
     @Test
@@ -85,7 +85,7 @@ class CircuitBreakerTest {
             "This is a successful call"
         }
 
-        circuitBreaker.status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
     }
 
     @Test
@@ -97,7 +97,7 @@ class CircuitBreakerTest {
             throw RuntimeException("something went wrong")
         }
 
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
     }
 
     @Test
@@ -114,7 +114,7 @@ class CircuitBreakerTest {
             "successful response"
         }
 
-        circuitBreaker.status `should equal` CircuitBreakerStatus.CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.CLOSE
     }
 
     @Test
@@ -131,14 +131,14 @@ class CircuitBreakerTest {
             throw RuntimeException("something went wrong")
         }
 
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
     }
 
     @Test
     fun `it should automatically retry connection after specified duration`() {
         val circuitBreaker = CircuitBreaker(
             failedThreshold = 3,
-            status = CircuitBreakerStatus.OPEN,
+            initialStatus = CircuitBreakerStatus.OPEN,
             shouldRetryAfter = Duration.ofSeconds(2)
         )
         val success = "some success response"
@@ -146,7 +146,7 @@ class CircuitBreakerTest {
         val breakerResponse = circuitBreaker.call {
             success
         }
-        circuitBreaker.status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
         breakerResponse.response!! `should equal` success
     }
 
@@ -163,18 +163,18 @@ class CircuitBreakerTest {
         circuitBreaker.call { success }
         circuitBreaker.call { success }
         circuitBreaker.call { success }
-        circuitBreaker.status `should equal` CircuitBreakerStatus.CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.CLOSE
 
         //Three failed calls should change the status to OPEN
         circuitBreaker.call { throw exception }
         circuitBreaker.call { throw exception }
         circuitBreaker.call { throw exception }
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
 
         //Any calls after circuit is OPEN should return DEFAULT_RESPONSE and status should stay as OPEN
         circuitBreaker.call { throw exception }.responseStatus `should equal` CircuitBreakerResponseStatus.DEFAULT_RESPONSE
         circuitBreaker.call { throw exception }.responseStatus `should equal` CircuitBreakerResponseStatus.DEFAULT_RESPONSE
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
 
         //Failed call after retry duration should go through and return the actual response from upstream with exception
         //keep status as OPEN
@@ -182,20 +182,20 @@ class CircuitBreakerTest {
         val call = circuitBreaker.call { throw exception }
         call.responseStatus `should equal` CircuitBreakerResponseStatus.FAILURE
         call.ex!! `should equal` exception
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
 
         //Next call should return default response
         circuitBreaker.call { throw exception }.responseStatus `should equal` CircuitBreakerResponseStatus.DEFAULT_RESPONSE
-        circuitBreaker.status `should equal` CircuitBreakerStatus.OPEN
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.OPEN
 
         // Wait for 2 seconds; it should retry and change status to PARTIAL_CLOSE
         Thread.sleep(2000)
         circuitBreaker.call { success }.response!! `should equal` success
         circuitBreaker.call { success }.response!! `should equal` success
-        circuitBreaker.status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.PARTIAL_CLOSE
 
         //Third success call should change the status to CLOSE and return response from upstream
         circuitBreaker.call { success }.response!! `should equal` success
-        circuitBreaker.status `should equal` CircuitBreakerStatus.CLOSE
+        circuitBreaker.stats.get().status `should equal` CircuitBreakerStatus.CLOSE
     }
 }

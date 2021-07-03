@@ -1,34 +1,35 @@
 package com.starter.multithreading
 
 import java.time.Duration
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 class CircuitBreaker(
     val failedThreshold: Int = 3,
     val successThreshold: Int = 3,
-    var status: CircuitBreakerStatus = CircuitBreakerStatus.CLOSE,
+    private var initialStatus: CircuitBreakerStatus = CircuitBreakerStatus.CLOSE,
     val shouldRetryAfter: Duration = Duration.ofSeconds(1)
 ) {
-    private var successCountAfterPartialFailure = 0
-    private var failureCountAfterPartialFailure = 0
-    private var failedCount: Int = 0
     private var lastAttempt = System.currentTimeMillis()
-    private val lock = ReentrantLock()
+    var stats = AtomicReference(
+        CircuitBreakerStats(
+            failedCount = 0,
+            successCountAfterPartialFailure = 0,
+            failureCountAfterPartialFailure = 0,
+            status = initialStatus
+        )
+    )
+
     fun call(block: () -> Any): CircuitBreakerResponse {
-        when (status) {
+        when (stats.get().status) {
             CircuitBreakerStatus.OPEN -> {
                 return if (shouldRetry()) {
                     try {
                         val response = executeBlock(block)
-                        lock.lock()
                         registerPartialSuccess()
-                        lock.unlock()
                         CircuitBreakerResponse.success(response)
                     } catch (ex: Exception) {
-                        lock.lock()
                         registerPartialFailure()
-                        lock.unlock()
                         CircuitBreakerResponse.failure(ex)
                     }
                 } else {
@@ -37,29 +38,23 @@ class CircuitBreaker(
             }
             CircuitBreakerStatus.PARTIAL_CLOSE -> return try {
                 val response = block()
-                lock.lock()
                 registerPartialSuccess()
                 if (shouldCloseAfterPartialClose()) {
                     closeCircuit()
                 }
-                lock.unlock()
                 CircuitBreakerResponse.success(response)
             } catch (ex: Exception) {
-                lock.lock()
                 registerPartialFailure()
                 if (shouldOpenAfterPartialClose()) {
                     openCircuit()
                 }
-                lock.unlock()
                 CircuitBreakerResponse.failure(ex)
             }
             else -> return try {
                 val response = block()
                 CircuitBreakerResponse.success(response)
             } catch (ex: Exception) {
-                lock.lock()
                 registerFailureWhenCircuitWasOpen()
-                lock.unlock()
                 CircuitBreakerResponse.failure(ex)
             }
         }
@@ -73,43 +68,98 @@ class CircuitBreaker(
     }
 
     private fun registerFailureWhenCircuitWasOpen() {
-        failedCount++
-        if (failedCount == failedThreshold) {
-            status = CircuitBreakerStatus.OPEN
-            println("Circuit open at: ${getSeconds()} --> $status -> $failedCount thread: ${Thread.currentThread().name}")
+//        failedCount++
+//        if (failedCount == failedThreshold) {
+//            status = CircuitBreakerStatus.OPEN
+//            println("Circuit open at: ${getSeconds()} --> $status -> $failedCount thread: ${Thread.currentThread().name}")
+//        }
+        val previousStats = stats.get()
+        val newFailedCount = previousStats.failedCount + 1
+        val newStats = previousStats.copy(
+            failedCount = newFailedCount,
+            status = if(newFailedCount == failedThreshold) CircuitBreakerStatus.OPEN else previousStats.status
+        )
+        while (true) {
+            if (stats.compareAndSet(previousStats, newStats)) {
+                println("Circuit open at: ${getSeconds()} --> ${newStats.status} -> ${newStats.failedCount} thread: ${Thread.currentThread().name}")
+                return
+            }
         }
     }
 
-    private fun shouldCloseAfterPartialClose() = successCountAfterPartialFailure == successThreshold
+    private fun shouldCloseAfterPartialClose() = stats.get().successCountAfterPartialFailure == successThreshold
 
-    private fun shouldOpenAfterPartialClose() = failureCountAfterPartialFailure == failedThreshold
+    private fun shouldOpenAfterPartialClose() = stats.get().failureCountAfterPartialFailure == failedThreshold
 
     private fun registerPartialFailure() {
-        failureCountAfterPartialFailure++
+//        failureCountAfterPartialFailure++
+
+        val previousStats = stats.get()
+        val newStats = previousStats.copy(
+            failureCountAfterPartialFailure = previousStats.failureCountAfterPartialFailure + 1
+        )
+        while (true) {
+            if (stats.compareAndSet(previousStats, newStats)) {
+                return
+            }
+        }
     }
 
     private fun registerPartialSuccess() {
-        status = CircuitBreakerStatus.PARTIAL_CLOSE
-        successCountAfterPartialFailure++
-        println("Circuit PARTIAL_CLOSE at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
+//        status = CircuitBreakerStatus.PARTIAL_CLOSE
+//        successCountAfterPartialFailure++
+//        println("Circuit PARTIAL_CLOSE at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
+
+        val previousStats = stats.get()
+        val newStats = previousStats.copy(
+            status = CircuitBreakerStatus.PARTIAL_CLOSE,
+            successCountAfterPartialFailure = previousStats.successCountAfterPartialFailure + 1
+        )
+        while (true) {
+            if (stats.compareAndSet(previousStats, newStats)) {
+                println("Circuit PARTIAL_CLOSE at: ${getSeconds()} --> ${newStats.status} thread: ${Thread.currentThread().name}")
+                return
+            }
+        }
     }
 
     private fun openCircuit() {
-        status = CircuitBreakerStatus.OPEN
-        resetCounters()
-        println("Circuit OPEN at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
+//        status = CircuitBreakerStatus.OPEN
+//        resetCounters()
+//        println("Circuit OPEN at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
+        val previousStats = stats.get()
+        val newStats = previousStats.copy(
+            status = CircuitBreakerStatus.OPEN,
+            failedCount = 0,
+            successCountAfterPartialFailure = 0,
+            failureCountAfterPartialFailure = 0
+        )
+        while (true) {
+            if (stats.compareAndSet(previousStats, newStats)) {
+                println("Circuit OPEN at: ${getSeconds()} --> ${newStats.status} thread: ${Thread.currentThread().name}")
+                return
+            }
+        }
     }
 
     private fun closeCircuit() {
-        status = CircuitBreakerStatus.CLOSE
-        println("Circuit CLOSE at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
-        resetCounters()
-    }
+//        status = CircuitBreakerStatus.CLOSE
+//        println("Circuit CLOSE at: ${getSeconds()} --> $status thread: ${Thread.currentThread().name}")
+//        resetCounters()
 
-    private fun resetCounters() {
-        failedCount = 0
-        successCountAfterPartialFailure = 0
-        failureCountAfterPartialFailure = 0
+        val previousStats = stats.get()
+        val newStats = previousStats.copy(
+            status = CircuitBreakerStatus.CLOSE,
+            failedCount = 0,
+            successCountAfterPartialFailure = 0,
+            failureCountAfterPartialFailure = 0
+        )
+        while (true) {
+            if (stats.compareAndSet(previousStats, newStats)) {
+                println("Circuit CLOSE at: ${getSeconds()} --> ${newStats.status} thread: ${Thread.currentThread().name}")
+                return
+            }
+        }
     }
 }
 
@@ -145,6 +195,13 @@ enum class CircuitBreakerStatus {
     PARTIAL_CLOSE
 }
 
+data class CircuitBreakerStats(
+    val failedCount: Int = 0,
+    val successCountAfterPartialFailure: Int = 0,
+    val failureCountAfterPartialFailure: Int = 0,
+    val status: CircuitBreakerStatus
+)
+
 fun main() {
     val circuitBreaker = CircuitBreaker(shouldRetryAfter = Duration.ofSeconds(3))
 
@@ -163,7 +220,7 @@ fun main() {
     }
 
     val t3 = thread(start = false, name = "t3") {
-        (0..6).forEach {
+        (0..5).forEach {
             Thread.sleep(1000)
             circuitBreaker.call { throw RuntimeException("something went wrong") }
         }
