@@ -11,8 +11,10 @@ class ConcurrentCacheWithExpiry(private val expiryInMillis: Int) {
     fun computeAndCache(key: String, compute: () -> String): String? {
         val timedEntry = entries[key]
         if(timedEntry == null || timedEntry.isExpired(expiryInMillis)) {
+            //TODO: remove and compute is not atomic
+            entries.remove(key)
             return entries.computeIfAbsent(key) {
-                println("message from ${Thread.currentThread().name} not found.. making the call")
+                println("message from ${Thread.currentThread().name} not found.. making the call ${System.currentTimeMillis() / 1000}")
                 TimedEntry(compute())
             }.value
         }
@@ -65,7 +67,7 @@ fun main() {
     }
     val threads = (0..100).map {
         thread(start = false, name = "T-$it") {
-//            Thread.sleep(getRandomNumberUsingNextInt(100, 200).toLong())
+            Thread.sleep(getRandomNumberUsingNextInt(100, 200).toLong())
             val result = cache.computeAndCache("key") {
                 println("T-$it executed")
                 "value cached from: T-$it"
