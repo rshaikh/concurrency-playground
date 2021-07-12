@@ -2,32 +2,29 @@ package com.starter.multithreading
 
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import kotlin.concurrent.thread
 
 class ConcurrentCacheWithExpiry(private val expiryInMillis: Int) {
 //    private val entries = mutableMapOf<String, TimedEntry>()
     private val entries = ConcurrentHashMap<String, TimedEntry>()
-    private val executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
 
-    fun computeAndCache(key: String, compute: () -> String): String {
+    fun computeAndCache(key: String, compute: () -> String): String? {
         val timedEntry = entries[key]
         if(timedEntry == null || timedEntry.isExpired(expiryInMillis)) {
-            println("message from ${Thread.currentThread().name} not found.. making the call")
-            val futureCompute = executorService.submit(compute)
-            entries[key] = TimedEntry(futureCompute)
-            return futureCompute.get()
+            return entries.computeIfAbsent(key) {
+                println("message from ${Thread.currentThread().name} not found.. making the call")
+                TimedEntry(compute())
+            }.value
         }
-        return timedEntry.value.get()
+        return timedEntry.value
     }
 
-    fun shutDown() {
+    /*fun shutDown() {
         executorService.shutdown()
-    }
+    }*/
 }
 
-class TimedEntry(val value: Future<String>) {
+class TimedEntry(val value: String) {
     private val lastAccessedTimeStamp = System.currentTimeMillis()
 
     fun isExpired(expiryInMillis: Int): Boolean {
@@ -36,7 +33,7 @@ class TimedEntry(val value: Future<String>) {
 }
 
 fun main() {
-    val cache = ConcurrentCacheWithExpiry(5000)
+    val cache = ConcurrentCacheWithExpiry(2000)
     fun getRandomNumberUsingNextInt(min: Int, max: Int): Int {
         val random = Random()
         return random.nextInt(max - min) + min;
@@ -68,7 +65,7 @@ fun main() {
     }
     val threads = (0..100).map {
         thread(start = false, name = "T-$it") {
-            Thread.sleep(getRandomNumberUsingNextInt(100, 200).toLong())
+//            Thread.sleep(getRandomNumberUsingNextInt(100, 200).toLong())
             val result = cache.computeAndCache("key") {
                 println("T-$it executed")
                 "value cached from: T-$it"
@@ -92,6 +89,4 @@ fun main() {
         it.start()
         it.join()
     }
-
-    cache.shutDown()
 }
