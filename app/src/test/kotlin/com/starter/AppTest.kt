@@ -5,10 +5,25 @@ package com.starter
 
 import org.amshove.kluent.`should equal`
 import org.junit.jupiter.api.Test
+import java.util.concurrent.CompletableFuture
 
 class AppTest {
     @Test
     fun `it should greet user`() {
         App().greeting `should equal` "Hello World!"
+    }
+
+    @Test
+    fun `play with java async`() {
+        val supplyAsync: CompletableFuture<String> = CompletableFuture.supplyAsync {
+            Thread.sleep(10)
+            return@supplyAsync "This is returned after some time"
+        }.thenApplyAsync { it+"some new string" }
+
+        var counter = 0
+        while (!supplyAsync.isDone) {
+            counter++
+        }
+        println("Finished $counter ${supplyAsync.get()}")
     }
 }
